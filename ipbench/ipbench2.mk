@@ -1,13 +1,15 @@
 # ipbench2 for Buildroot
 
-IPBENCH2_VERSION = 2.1.1
+IPBENCH2_VERSION = 2.1.3
 IPBENCH2_SITE = $(call github,au-ts,ipbench,main)
 IPBENCH2_SUBDIR = ipbench2
 IPBENCH2_INSTALL_STAGING = YES
 IPBENCH2_LICENSE = GPL-2.0
 IPBENCH2_LICENSE_FILES = COPYING
 
-IPBENCH2_DEPENDENCIES = host-swig host-python3 host-libtool python3
+IPBENCH2_DEPENDENCIES = host-swig host-python3 host-libtool python3 host-autoconf-archive host-automake host-autoconf host-libtool
+IPBENCH2_AUTORECONF = YES
+IPBENCH2_AUTORECONF_OPTS = -I$(HOST_DIR)/share/autoconf-archive
 
 IPBENCH2_INSTALL_TARGET = YES
 IPBENCH2_KEEP_HEADERS = YES
@@ -27,13 +29,7 @@ IPBENCH2_CONF_ENV = \
     PKG_CONFIG_PATH="$(STAGING_DIR)/usr/lib/pkgconfig" \
     PKG_CONFIG_LIBDIR="$(STAGING_DIR)/usr/lib/pkgconfig"
 
-define IPBENCH2_CONFIGURE_CMDS
-    cd $(@D)/$(IPBENCH2_SUBDIR) && \
-    $(TARGET_MAKE_ENV) ./autogen.sh && \
-    $(TARGET_CONFIGURE_OPTS) \
-    $(IPBENCH2_CONF_ENV) && \
-    mkdir -p $(STAGING_DIR)/ipbench && \
-    ./configure \
+IPBENCH2_CONF_OPTS = \
         --build=$(GNU_HOST_NAME) \
         --host=$(GNU_TARGET_NAME) \
         --prefix=/ipbench/usr \
@@ -41,9 +37,9 @@ define IPBENCH2_CONFIGURE_CMDS
         --localstatedir=/ipbench/var \
         --libdir=/ipbench/usr/lib \
         --disable-static \
-        --enable-shared
+        --enable-shared \
         --with-sysroot=$(STAGING_DIR)
-endef
+
 
 # Fix libtool to handle cross-compilation
 define IPBENCH2_POST_CONFIGURE_CMDS
