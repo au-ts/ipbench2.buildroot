@@ -1,13 +1,17 @@
 # ipbench2 for Buildroot
 
 IPBENCH2_VERSION = 2.1.1
-IPBENCH2_SITE = $(call github,au-ts,ipbench,crosscompilation)
+IPBENCH2_SITE = $(call github,au-ts,ipbench,main)
 IPBENCH2_SUBDIR = ipbench2
 IPBENCH2_INSTALL_STAGING = YES
 IPBENCH2_LICENSE = GPL-2.0
 IPBENCH2_LICENSE_FILES = COPYING
 
 IPBENCH2_DEPENDENCIES = host-swig host-python3 host-libtool python3
+
+IPBENCH2_INSTALL_TARGET = YES
+IPBENCH2_KEEP_HEADERS = YES
+IPBENCH2_KEEP_STATIC_LIBRARIES = YES
 
 # Override autotools configure variables
 IPBENCH2_CONF_ENV = \
@@ -23,10 +27,6 @@ IPBENCH2_CONF_ENV = \
     PKG_CONFIG_PATH="$(STAGING_DIR)/usr/lib/pkgconfig" \
     PKG_CONFIG_LIBDIR="$(STAGING_DIR)/usr/lib/pkgconfig"
 
-# The below step puts everything in an `/ipbench` subdirectory to avoid
-# libtool freaking out about the staging directory being an unsafe location
-# (detects usr, etc as the ones on your host!). These are moved out again in
-# the POST_INSTALL_TARGET_CMDS.
 define IPBENCH2_CONFIGURE_CMDS
     cd $(@D)/$(IPBENCH2_SUBDIR) && \
     $(TARGET_MAKE_ENV) ./autogen.sh && \
@@ -45,46 +45,6 @@ define IPBENCH2_CONFIGURE_CMDS
         --with-sysroot=$(STAGING_DIR)
 endef
 
-define IPBENCH2_BUILD_CMDS
-    $(TARGET_MAKE_ENV) $(MAKE) \
-        CC="$(TARGET_CC)" \
-        CROSS_COMPILE="$(TARGET_CROSS)" \
-        LDFLAGS="$(TARGET_LDFLAGS)" \
-        -C $(@D)/$(IPBENCH2_SUBDIR)
-endef
-
-define IPBENCH2_INSTALL_TARGET_CMDS
-    $(TARGET_MAKE_ENV) $(MAKE) \
-        DESTDIR=$(TARGET_DIR) \
-        -C $(@D)/$(IPBENCH2_SUBDIR) install
-endef
-
-# Move everything out of the dummy ipbench folder!
-define IPBENCH2_POST_INSTALL_TARGET_CMDS
-    @echo "Moving ipbench2 info to target directory"
-    test -d $(TARGET_DIR)/ipbench/usr || (echo "Error: $(TARGET_DIR)/ipbench/usr does not exist" && exit 1)
-    ls -la $(TARGET_DIR)/ipbench/usr
-    mkdir -p $(TARGET_DIR)/usr
-    cd $(TARGET_DIR)/ipbench/usr && \
-        for d in ./*; do \
-            if [ -d "$$d" ]; then \
-                cp -rv "$$d" $(TARGET_DIR)/usr/ ; \
-            else \
-                cp -v "$$d" $(TARGET_DIR)/usr/ ; \
-            fi \
-        done
-    @echo "Cleaning up temporary directory..."
-    rm -rf $(TARGET_DIR)/ipbench
-endef
-
-IPBENCH2_POST_INSTALL_TARGET_HOOKS += IPBENCH2_POST_INSTALL_TARGET_CMDS
-
-define IPBENCH2_INSTALL_STAGING_CMDS
-    $(TARGET_MAKE_ENV) $(MAKE) \
-        DESTDIR=$(STAGING_DIR) \
-        -C $(@D)/$(IPBENCH2_SUBDIR) install
-endef
-
 # Fix libtool to handle cross-compilation
 define IPBENCH2_POST_CONFIGURE_CMDS
     $(SED) "s,^CC=\"$$CC\",CC=\"$(TARGET_CC)\"," $(@D)/$(IPBENCH2_SUBDIR)/libtool
@@ -94,6 +54,57 @@ define IPBENCH2_POST_CONFIGURE_CMDS
     $(SED) "s,\$${wl}-rpath \$${wl}/usr/lib,,g" $(@D)/$(IPBENCH2_SUBDIR)/libtool
     $(SED) 's,^sys_lib_search_path_spec=.*,sys_lib_search_path_spec="$(STAGING_DIR)/usr/lib",' $(@D)/$(IPBENCH2_SUBDIR)/libtool
     $(SED) 's,^sys_lib_dlsearch_path_spec=.*,sys_lib_dlsearch_path_spec="$(STAGING_DIR)/usr/lib",' $(@D)/$(IPBENCH2_SUBDIR)/libtool
+endef
+
+define IPBENCH2_BUILD_CMDS
+    mkdir -p $(TARGET_DIR)/usr/lib
+    $(TARGET_MAKE_ENV) $(MAKE) \
+        CC="$(TARGET_CC)" \
+        CROSS_COMPILE="$(TARGET_CROSS)" \
+        LDFLAGS="$(TARGET_LDFLAGS)" \
+        -C $(@D)/$(IPBENCH2_SUBDIR)
+endef
+
+define IPBENCH2_POST_INSTALL_STAGING_CMDS
+    mkdir -p $(STAGING_DIR)/usr/bin
+    ln -sf $(STAGING_DIR)/ipbench/usr/bin/ipbench $(STAGING_DIR)/usr/bin/ipbench
+    ln -sf $(STAGING_DIR)/ipbench/usr/bin/ipbenchd $(STAGING_DIR)/usr/bin/ipbenchd
+
+    mkdir -p $(STAGING_DIR)/usr/lib
+    cd $(STAGING_DIR)/ipbench/usr/lib && \
+    find . -type f -o -type l | while read file; do \
+        mkdir -p $(STAGING_DIR)/usr/lib/$$(dirname $$file) && \
+        ln -sf $(STAGING_DIR)/ipbench/usr/lib/$$file $(STAGING_DIR)/usr/lib/$$file ; \
+    done
+endef
+
+IPBENCH2_POST_INSTALL_STAGING_HOOKS += IPBENCH2_POST_INSTALL_STAGING_CMDS
+
+define IPBENCH2_INSTALL_TARGET_CMDS
+    $(TARGET_MAKE_ENV) $(MAKE) \
+        DESTDIR=$(TARGET_DIR) \
+        -C $(@D)/$(IPBENCH2_SUBDIR) install
+endef
+
+define IPBENCH2_POST_INSTALL_TARGET_SYMLINK
+    mkdir -p $(TARGET_DIR)/usr/bin
+    ln -sf $(TARGET_DIR)/ipbench/usr/bin/ipbench $(TARGET_DIR)/usr/bin/ipbench
+    ln -sf $(TARGET_DIR)/ipbench/usr/bin/ipbenchd $(TARGET_DIR)/usr/bin/ipbenchd
+    mkdir -p $(TARGET_DIR)/usr/lib
+    cd $(TARGET_DIR)/ipbench/usr/lib && \
+    find . -type f -o -type l | while read file; do \
+        mkdir -p $(TARGET_DIR)/usr/lib/$$(dirname $$file) && \
+        ln -sf $(TARGET_DIR)/ipbench/usr/lib/$$file $(TARGET_DIR)/usr/lib/$$file ; \
+    done
+endef
+
+IPBENCH2_POST_INSTALL_TARGET_HOOKS += IPBENCH2_POST_INSTALL_TARGET_CMDS
+IPBENCH2_POST_INSTALL_TARGET_HOOKS += IPBENCH2_POST_INSTALL_TARGET_SYMLINK
+
+define IPBENCH2_INSTALL_STAGING_CMDS
+    $(TARGET_MAKE_ENV) $(MAKE) \
+        DESTDIR=$(STAGING_DIR) \
+        -C $(@D)/$(IPBENCH2_SUBDIR) install
 endef
 
 $(eval $(autotools-package))
